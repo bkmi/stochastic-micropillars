@@ -1,0 +1,164 @@
+############## AG SOLVER ###############
+########################################
+### VERSION: 0.1	################
+
+Hallo Leute!
+
+Das ist unser AG_Solver, den alle gerne benutzen können.
+Er basiert auf Andrés DDE Solver und einigen nützlichen Modulen mir.
+Wenn ihr Fragen habt, bitte kommt bei uns im Büro vorbei.
+
+Liebe Grüße,
+
+Chris und André
+
+
+BEDIENUNG:
+
+a) Makefile:
+	Der Makefile ist gut auskommentiert. Lies ihn dir durch und editiere ihn, wie du ihn brauchst.
+	Danach kannst du dein Programm ganz einfach mit Eingabe von "make" oder "make PROGRAMM" im Terminal** kompilieren.
+	Mithilfe von "make clean" kannst du alles kompilierte löschen, falls das mal sein muss. 
+	Dieser Schritt empfiehlt sich besonders, wenn du an den Source Codes in add_src oder solver_inc spielen solltest.
+
+	** Dafür natürlich im Ordner sein, wo auch der makefile ist.
+
+b) Der Solver:
+	Andrés Solver ist einfach zu bedienen. Eine erste Idee bekommt man in Example.cc. Wichtig ist, dass die Differentialgleichung 
+	wie im Beispiel mithilfe einer Lambda Funktion gebaut wurde. Ihr könnt am einfachsten die Example.cc kopieren und dann von dort aus starten 
+	und einfach eure DGL einbauen.
+
+	Der Solver kann DDE-Equations mit Single und Multi-Delay, der Single Delay Aufruf sieht so aus:
+	roehm::ddesolve_euler_singledelay(dde_eq, State, History, t_start, t_stop, dt, afterstepfunction)
+	Dabei ist roehm:: der Namespace in dem sich die ddesolve Funktion befindet. Das ist in etwa so, wie mit numpy in python. roehm::foo() entspricht also sowas wie numpy.foo().
+
+	Multidelay habe ich noch nicht getestet, mache ich aber mal und editiere dann den File. (Oder wer anderes =) )
+
+	Die afterstepfunction wird nach jedem Zeitschritt mit allem, was im zu diesem Zeitpunkt gültigen State und History Vektor drin steht.
+	Hier können z.B. Zeitserien extrahiert werden, oder Berechnungen für Korrelationsfunktionen angestellt werden.
+	Wichtig ist aber auch hier, dass Variablen die in jedem Zeitschritt verändert werden sollen außerhalb der afterstepfunction (davor) deklariert werden.
+	Der Zusatz [&] in der afterstepfunction stellt sicher, dass ihr auf diese Größen zugreifen und sie bearbeiten könnt. Alles was in der afterstep steht wird
+	in jedem Zeitschritt neu erstellt und wieder gelöscht. Keine großen Arrays also hier rein =).
+	Andrés Single Delay Solver wird inkludiert durch #include "ddesolve_euler_singledelay.hh"
+
+c) Module:
+	Ich habe bereits einige Module gebaut.
+	Diese sind in meinem Namespace katana::, man kann mit der include-Zeile #include "inc_modules.hh" alle Module auf einmal einfügen und dann benutzen.
+
+	Einige nette Features:
+
+	Parameter einlesen:
+		Parameter einzulesen ist nurnoch ein Einzeiler. Ihr könnt das hinter jede double, jeden Bool und jeden string schreiben und den so einlesen.
+		Wichtig ist, dass argv und argc der Argumentvector und die Argumentcounts aus der Main sind (d.h. int main(int argc, char **argv) {};)
+ 		So gehts:
+CC		double foo=katana::getCmdOption(argv, argv+argc, "-foo_2" , 8); 			// READ IN doubles
+CC		std::string filename=katana::getCmdOption(argv, argv+argc, "-f", "bar.data"); 		// READ IN STRINGS
+CC		bool la=katana::getCmdOption_bool(argv, argv+argc, "-switch", true); 			// READ IN BOOLS	
+		
+		Der letzte Wert in der Übergabeliste, z.B. "bar.data" ist dabei der Standard-Wert.
+
+	Fourier Trafo:
+
+		Optische und elektrische (Power) Spektren auszurechnen ist super einfach.
+		Man muss nur die Zeitserie in einem std::vector<std::complex<double>> (optische Spektren) oder std::vector<double> (Powerspektren)
+		innerhalb der afterstep Funktion speicher.
+		Das geht am einfachsten, indem man z.B. einen 
+CC		std::vector<double> timeseries; 
+		und
+CC		std::vector<std::complex<double>> power_spec;
+		deklariert und timeseries in die afterstepfunction steckt:
+
+CC		auto afterstepfunction = [&](State &X, State &X_tau, Time &T, State &dxdt)
+CC			{	double intensity= X[0]; 			// Sei X[0] die Photonenzahl meiner Mode
+CC				timeseries.push_back(X[0]);
+CC			};
+		
+		Das Spektrum rechnet man dann einfach so aus:
+CC		katana::get_power_spec(timeseries, power_spec);
+		
+		Und kann das auch ganz einfach Speichern:
+CC		std::string poweroutname;
+CC		poweroutname.append(path+"lin15a_powerspec.dat");	
+CC		katana::dump_power_spec(powerspec, dt, poweroutname);
+
+	Print TimeSeries:
+
+		Zeitserien kann man ganz einfach speichern, durch die Funktionen:
+
+CC		katana::dump_trace(std::vector<complex<double>> timeseries, Time dt, std::string traceoutname, int every);
+CC		katana::dump_trace(std::vector<std::vector<double>> timetrace, Time dt, std::string traceoutname, int every);
+
+		Every kennzeichnet hier, dass man nur jeden every_ten Schritt der Zeitserie speichert. (Manchmal braucht man mehr Zeitserie aber will
+		nicht alles auf der Festplatte haben. Achtet auf euren Speicherverbrauch! Vielleicht muss ja gar nicht alles in den Vektor timetrace!
+		
+		Die vollen Zeitserien könnt ihr euch wieder in der afterstepfunction holen. Dabei kann man einfach alles auf einmal speicher, wenn man
+		die dynamischen Variablen wie im EXAMPLE durch einen std::vector beschreibt. (using State= std::vector<double>).
+
+CC		auto afterstepfunction = [&](State &X, State &X_tau, Time &T, State &dxdt)
+CC			{	
+CC				timeseries.push_back(X); 
+CC			};
+	
+	Noise einbauen:
+		Gaussches Weißes Rauschen kann man sich hier ganz einfach holen mithilfe von
+CC		std::complex<double> gwNoise_number= katana::gwNoise();
+
+		Mithilfe der Klasse
+CC		katana::Seed s; 
+		kann man danach den seed auf durch die ComputerZeit (quasiRandom)
+CC		s.set_seed();
+		oder auf einen festen Wert (z.B. Modelle vergleichen durch gleiches Noise.)
+CC		s.set_seed(int value);
+		Das könnte man natürlich auch wieder mit dem Programmaufruf zusammen vernesteln, z.B. durch:
+CC		if(katana::getCmdOption_bool(argv, argv+argc, "-seed", false)) {s.set_seed(katana::getCmdOption(argv, argv+argc, "-seed", 0));} else {s.set_seed();};
+			^- Check ob "-seed" in argumentenliste des Programms      ^- Dann mit Wert nach "-seed" setzen					^- sonst random seed
+
+
+	Sauberes Anlegen der Datenfiles:
+		Ich habe angefangen meine Files zu Ordnen. Alle ähnlichen Modelle liegen als Programme in einem Ordner,
+		alle ausgespuckten Daten landen in "data/". Für jedes Modell erstelle ich einen Unterordner mit dem Namen "MODEL" und
+		eine Unterordner für jeden Tag. So legt man sie an:
+
+CC		std::string model	=MODELPATH;
+CC		std::string path	=katana::getCmdOption(argv, argv+argc, "-path", "data/"); 		
+CC		std::string date	=katana::getDateString(); 
+CC	 	std::string subpath	=katana::getCmdOption(argv, argv+argc, "-spath", "");
+CC		path			=path+model+date+subpath;
+CC		boost::filesystem::create_directories(path.c_str());
+	
+		Wie im Punkt Fourier Trafo kann man so einfach seine Dateien sortieren und automatisch immer in den richtigen Ordner packen und die Übersicht behalten.
+
+	Übersichtliche Dokumentation des Programmes und der Daten:
+
+		Man verschusselt gerne die Zettel, auf denen alle Parameter gestanden haben, die man so benutzt hat. 
+		Hier 2 Tricks, mit denen immer alles notiert ist:
+		Erstens: Man schreibt die Standardausgabe einfach in einen File.
+			 Nutzt man das zusammen mit meinen getCmdOption Funktionen, steht dann alles, was man eingegeben hat, ausgegeben in einem Log_File im richtigen Ordner.
+
+CC		if(katana::getCmdOption_bool(argv, argv+argc, "-rmlog", false)) katana::rm(path+"log.txt");
+CC		std::ofstream out(path+"log.txt", std::ios::app);
+CC		std::cout.rdbuf(out.rdbuf());
+		Das nutzt natürlich nicht für "Interaktive Programme". Dann müsste man das nochmal manuell machen. =)
+		Vielleicht schreibe ich aber auch demnächst was, dass die Standardausgabe behält und eine Kopie in die Log macht. =)
+
+		Zweitens: Man kopiert den Sourcecode, den man benutzt auch gleich mit in den Ordner:
+
+CC		katana::cp_src(sourcecode, path);
+		
+		Mit beiden Schritten liegen alle veränderten und nicht veränderten Parameter im richtigen Data-Unterordner. So kann man immer wieder zu alten Dingen zurück und die neu Ausführen. =)
+
+
+	Plotting:
+		Mit runfourierfitter.sh habe ich noch ein einfaches Shell Skript gebaut, dass Daten aus data/subfolder rauszieht und danach eine python routine laufen lässt. =)
+		Plotfourier ist ein einfaches Python Skript zum plotten eines Spektrums. Ist ein bisschen nonsense in dem Beispiel Model, aber so sieht man das es klappt und hat einen einfachen Startpunkt.
+
+
+
+
+
+
+
+Sobald ich weitere Module gebaut habe, werde ich sie einpflegen und dokumentieren. =)
+
+
+
