@@ -34,7 +34,8 @@ def histplot(x, y):
     Input the xdir intensity first and the ydir intensity second.
     """
     
-    plt.scatter(x, y, s=3.1415926*0.5**2, c = 'red', alpha=0.5)
+    fig = plt.scatter(x, y, s=3.1415926*0.5**2, c = 'red', alpha=0.5)
     plt.gca().set_xlim(left=0)
     plt.gca().set_ylim(bottom=0)
-    plt.show()
+    
+    return fig
